@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Hormuz Intelligence Terminal</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;900&family=Inter:wght@400;600;700;900&display=swap');
+  :root { 
+    --bg: #05070a; --card: #0f172a; --border: #1e293b; --text: #f1f5f9; 
+    --red: #ef4444; --amber: #f59e0b; --blue: #3b82f6; --green: #22c55e; --orange: #f97316;
+    --mono: 'JetBrains Mono', monospace; 
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 20px; }
+  
+  /* Header & Tabs */
+  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 8px; }
+  .tab { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: #94a3b8; cursor: pointer; font-weight: 600; font-size: 12px; transition: 0.2s; }
+  .tab.active { background: rgba(239,68,68,0.1); color: var(--red); border-color: rgba(239,68,68,0.3); }
+  .section-hidden { display: none; }
+
+  /* Grid KPIs */
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+  .kpi { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); }
+  .val { font-family: var(--mono); font-size: 32px; font-weight: 900; margin: 5px 0; }
+  .lbl { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+  
+  /* Map & General */
+  #map { height: 450px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--border); }
+  .news-box { background: var(--card); border-radius: 12px; padding: 15px; max-height: 350px; overflow-y: auto; border: 1px solid var(--border); }
+  
+  /* ── NUOVO: Stili per la Tabella Navi ── */
+  .vessel-box { background: var(--card); border-radius: 12px; padding: 15px; max-height: 280px; overflow-y: auto; border: 1px solid var(--border); margin-bottom: 20px; }
+  .live-table { width: 100%; border-collapse: collapse; font-size: 10px; font-family: var(--mono); text-align: left; }
+  .live-table th { background: rgba(148,163,184,0.1); padding: 8px; color: #94a3b8; position: sticky; top: 0; z-index: 2; }
+  .live-table td { padding: 8px; border-bottom: 1px solid var(--border); }
+  .live-table tr:hover { background: rgba(59,130,246,0.1); }
+  
+  /* War Room specific */
+  .war-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .faction-header { padding: 10px; border-radius: 8px 8px 0 0; font-weight: 900; text-transform: uppercase; font-size: 14px; text-align: center; }
+  .faction-us { background: rgba(59,130,246,0.1); color: var(--blue); border: 1px solid rgba(59,130,246,0.2); border-bottom: none; }
+  .faction-iran { background: rgba(249,115,22,0.1); color: var(--orange); border: 1px solid rgba(249,115,22,0.2); border-bottom: none; }
+  .faction-content { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 10px; background: rgba(15,23,42,0.4); max-height: 600px; overflow-y: auto; }
+
+  /* News Items */
+  .news-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .news-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-family: var(--mono); }
+  .n-time { font-size: 9px; color: #64748b; }
+  .n-src { font-size: 9px; font-weight: 700; color: #94a3b8; background: #1e293b; padding: 2px 6px; border-radius: 3px; }
+  .n-title { font-size: 12px; color: #e2e8f0; line-height: 1.4; text-decoration: none; }
+  .n-title:hover { color: #fff; text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1 style="margin:0; font-size:18px;">⚓ HORMUZ INTELLIGENCE TERMINAL</h1>
+    <div style="font-size:10px; color:#64748b; font-family:var(--mono); margin-top:4px;" id="clock-display"></div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="live" onclick="switchTab('live')">⚡ LIVE RADAR</button>
+    <button class="tab" data-tab="war" onclick="switchTab('war')">⚔️ WAR ROOM (Factions)</button>
+  </div>
+</div>
+
+<div id="tab-live">
+  <div class="grid">
+    <div class="kpi"><div class="lbl">Navi in Movimento (SOG > 1)</div><div class="val" id="kpi-active" style="color:var(--green)">0</div></div>
+    <div class="kpi"><div class="lbl">Brent Crude Oil</div><div class="val" id="kpi-brent" style="color:var(--amber)">$0.00</div><div id="kpi-brent-change" style="font-size:12px; font-family:var(--mono);">--</div></div>
+    <div class="kpi"><div class="lbl">Unità in Coda / Ferme</div><div class="val" id="kpi-queued" style="color:var(--blue)">0</div></div>
+    <div class="kpi"><div class="lbl">Livello Minaccia (AI Scraper)</div><div class="val" id="kpi-threat" style="color:var(--red)">--</div></div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="vessel-box">
+    <div style="font-size:11px; font-weight:800; color:#94a3b8; margin-bottom:10px; text-transform:uppercase;">📋 Tabella Unità in Transito</div>
+    <table class="live-table">
+      <thead>
+        <tr>
+          <th>MMSI</th>
+          <th>NOME NAVE</th>
+          <th>VELOCITÀ</th>
+          <th>ROTTA</th>
+          <th>AZIONE</th>
+        </tr>
+      </thead>
+      <tbody id="vessel-table-body">
+        <tr><td colspan="5" style="text-align:center; padding:20px; color:#64748b;">In attesa di dati dal Proxy Python...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  
+  <div class="news-box">
+    <div style="font-size:11px; font-weight:800; color:#94a3b8; margin-bottom:10px; text-transform:uppercase;">🗞️ Ultime Notizie Operative</div>
+    <div id="news-general">Attendere sincronizzazione dati...</div>
+  </div>
+</div>
+
+<div id="tab-war" class="section-hidden">
+  <div style="margin-bottom:15px; font-size:12px; color:#94a3b8; line-height:1.5;">
+    Questo pannello analizza i feed in tempo reale. Il filtro "Cinetico" scarta automaticamente opinioni, social media e notizie irrilevanti, smistando solo i bollettini operativi e le rivendicazioni in base all'origine della fonte.
+  </div>
+  
+  <div class="war-grid">
+    <div>
+      <div class="faction-header faction-us">🇺🇸 Fronte USA & Alleati (CENTCOM / UKMTO)</div>
+      <div class="faction-content" id="news-us">Caricamento bollettini purificati...</div>
+    </div>
+    <div>
+      <div class="faction-header faction-iran">🇮🇷 Fronte Iran & Asse Resistenza (IRGC / Houthi)</div>
+      <div class="faction-content" id="news-iran">Caricamento bollettini purificati...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+setInterval(() => { document.getElementById('clock-display').textContent = new Date().toLocaleString('it-IT'); }, 1000);
+
+function switchTab(id) {
+  document.querySelectorAll('#tab-live, #tab-war').forEach(el => el.classList.add('section-hidden'));
+  document.getElementById('tab-' + id).classList.remove('section-hidden');
+  document.querySelectorAll('.tab').forEach(el => {
+    el.classList.remove('active');
+    if (el.getAttribute('data-tab') === id) el.classList.add('active');
+  });
+  if(id === 'live' && map) { setTimeout(() => map.invalidateSize(), 100); }
+}
+
+let map = L.map('map').setView([25.5, 56.5], 6);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: 'CARTO' }).addTo(map);
+let markers = {};
+
+// Funzione ripristinata per zoomare sulla nave dalla tabella
+function zoomTo(lat, lng) {
+  map.setView([lat, lng], 11, { animate: true });
+}
+
+function buildNewsHTML(newsArray) {
+  if (!newsArray || newsArray.length === 0) return '<div style="padding:10px; color:#64748b; font-size:11px;">Nessun aggiornamento militare rilevato nelle ultime 48h.</div>';
+  let html = '';
+  newsArray.forEach(n => {
+    html += `
+      <div class="news-item">
+        <div class="news-meta">
+          <span class="n-time">${n.time}</span>
+          <span class="n-src" style="color:${n.color}; border:1px solid ${n.color}40; background:${n.color}10;">${n.src}</span>
+        </div>
+        <a href="${n.url}" target="_blank" class="n-title">${n.text}</a>
+      </div>
+    `;
+  });
+  return html;
+}
+
+async function update() {
+  try {
+    const r = await fetch('/api/ais');
+    if(!r.ok) return;
+    const d = await r.json();
+
+    document.getElementById('kpi-active').textContent = d.active_vessels;
+    document.getElementById('kpi-brent').textContent = '$' + d.brent;
+    document.getElementById('kpi-brent-change').textContent = d.brent_change;
+    document.getElementById('kpi-queued').textContent = d.queued_vessels;
+    document.getElementById('kpi-threat').textContent = d.threat;
+
+    // Ordina le navi per velocità decrescente per la tabella
+    d.vessels.sort((a, b) => b.sog - a.sog);
+    
+    let tableRows = '';
+
+    d.vessels.forEach(v => {
+      const isSpoofed = v.sog > 50;
+      
+      // 1. Aggiornamento Mappa
+      const iconHtml = `<div style="transform:rotate(${v.cog}deg); font-size:${isSpoofed?24:16}px; text-shadow: ${isSpoofed?'0 0 15px red, 0 0 5px red':''}">🔼</div>`;
+      if (!markers[v.mmsi]) {
+        markers[v.mmsi] = L.marker([v.lat, v.lng], {icon: L.divIcon({html: iconHtml, className:''})}).bindPopup(`<div style="color:black;font-family:monospace;font-size:11px;"><b>${v.name}</b><br>SOG: ${v.sog} kn ${isSpoofed ? '<b style="color:red">(SPOOFING!)</b>' : ''}<br>COG: ${v.cog}°</div>`).addTo(map);
+      } else {
+        markers[v.mmsi].setLatLng([v.lat, v.lng]);
+        markers[v.mmsi].setIcon(L.divIcon({html: iconHtml, className:''}));
+      }
+
+      // 2. Costruzione Righe Tabella
+      let speedStyle = 'color: var(--text);';
+      if (isSpoofed) {
+          speedStyle = 'color: var(--red); font-weight: 900; background: rgba(239,68,68,0.15); padding: 2px 4px; border-radius: 3px; border: 1px solid var(--red);';
+      } else if (v.sog < 1) {
+          speedStyle = 'color: var(--amber);';
+      }
+
+      let nameStyle = isSpoofed ? 'color: var(--red); font-weight: 800;' : 'font-weight:700';
+
+      tableRows += `
+        <tr style="${isSpoofed ? 'background: rgba(239,68,68,0.05);' : ''}">
+          <td>${v.mmsi}</td>
+          <td style="${nameStyle}">${v.name} ${isSpoofed ? '⚠️' : ''}</td>
+          <td style="${speedStyle}">${v.sog} kn</td>
+          <td>${v.cog}°</td>
+          <td><button onclick="zoomTo(${v.lat}, ${v.lng})" style="padding:4px 8px; background:var(--blue); border:none; border-radius:3px; color:white; cursor:pointer; font-weight:700; font-size:9px;">📍 FOCUS</button></td>
+        </tr>
+      `;
+    });
+
+    // Inserisce i dati nella tabella, o mostra un messaggio se non ci sono navi
+    document.getElementById('vessel-table-body').innerHTML = tableRows || '<tr><td colspan="5" style="text-align:center; padding:20px; color:#64748b;">Nessuna imbarcazione rilevata al momento.</td></tr>';
+
+    document.getElementById('news-general').innerHTML = buildNewsHTML(d.news_general);
+    document.getElementById('news-us').innerHTML = buildNewsHTML(d.news_us);
+    document.getElementById('news-iran').innerHTML = buildNewsHTML(d.news_iran);
+    
+  } catch(e) {}
+}
+
+setInterval(update, 5000);
+update();
+</script>
+</body>
+</html>
