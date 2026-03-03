@@ -3,6 +3,7 @@ import asyncio
 import json
 import time
 import email.utils
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -198,4 +199,5 @@ async def main():
     await asyncio.gather(web_server(), ais_stream(), fetch_news_loop(), fetch_market_data())
 
 if __name__ == "__main__":
+
     asyncio.run(main())
